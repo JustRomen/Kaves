@@ -1,4 +1,4 @@
-/* Reset a základní styl */
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -12,14 +12,14 @@ body {
   line-height: 1.4;
 }
 
-/* Kontejner */
+
 .container {
   max-width: 480px;
   margin: 0 auto;
   padding: 20px;
 }
 
-/* Nadpisy */
+
 h1 {
   text-align: center;
   margin-bottom: 20px;
@@ -29,7 +29,7 @@ h2 {
   margin-bottom: 10px;
 }
 
-/* Select */
+
 select {
   width: 100%;
   padding: 14px;
@@ -39,7 +39,7 @@ select {
   font-size: 18px;
 }
 
-/* Drinky - kontejner */
+
 .drinks-container {
   display: flex;
   flex-direction: column;
@@ -47,7 +47,7 @@ select {
   margin-bottom: 20px;
 }
 
-/* Řádek drinku */
+
 .drink-row {
   display: flex;
   justify-content: space-between;
@@ -99,3 +99,4 @@ select {
   cursor: pointer;
   margin-top: 10px;
 }
+
