@@ -1,18 +1,108 @@
 const username = "coffe";
 const password = "kafe";
 const url = "https://crm.skch.cz/ajax0/procedure2.php";
-
 const AUTH_HEADER = make_base_auth(username, password);
 
 function make_base_auth(user, password) {
     return "Basic " + btoa(user + ":" + password);
 }
 
+// --- NOTIFIKAČNÍ SYSTÉM ---
+function showNotification(message, type = "info") {
+    let container = document.getElementById("notification-container");
+    if (!container) {
+        container = document.createElement("div");
+        container.id = "notification-container";
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement("div");
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.style.opacity = "0";
+        setTimeout(() => toast.remove(), 500);
+    }, 4000);
+}
+
+// --- DENNÍ PŘEHLED (BONUS) ---
+function updateDailySummary(drinks) {
+    const today = new Date().toISOString().split('T')[0]; // Např. "2026-04-08"
+    let summary = JSON.parse(localStorage.getItem("dailySummary") || "{}");
+
+    // Pokud je nový den, vyresetujeme přehled
+    if (summary.date !== today) {
+        summary = { date: today, drinks: {} };
+    }
+
+    drinks.forEach(d => {
+        if (d.value > 0) {
+            summary.drinks[d.type] = (summary.drinks[d.type] || 0) + d.value;
+        }
+    });
+
+    localStorage.setItem("dailySummary", JSON.stringify(summary));
+}
+
+function showDailySummary() {
+    const today = new Date().toISOString().split('T')[0];
+    const summary = JSON.parse(localStorage.getItem("dailySummary") || "{}");
+
+    if (summary.date === today && Object.keys(summary.drinks).length > 0) {
+        let msg = "Dnes jsi vypil(a): ";
+        let items = Object.entries(summary.drinks).map(([type, count]) => `${count}x ${type}`);
+        showNotification(msg + items.join(", "), "info");
+    } else {
+        showNotification("Dnes jsi ještě žádné kafe neměl(a)!", "info");
+    }
+}
+
+// --- OFFLINE FRONT A SYNCHRONIZACE ---
+function saveToOfflineQueue(payload) {
+    const queue = JSON.parse(localStorage.getItem("offlineQueue") || "[]");
+    queue.push(payload);
+    localStorage.setItem("offlineQueue", JSON.stringify(queue));
+    showNotification("Jste offline. Uloženo na později.", "warning");
+}
+
+async function syncOfflineQueue() {
+    if (!navigator.onLine) return;
+
+    const queue = JSON.parse(localStorage.getItem("offlineQueue") || "[]");
+    if (queue.length === 0) return;
+
+    showNotification("Obnoveno připojení. Odesílám offline data...", "info");
+    const failedQueue = [];
+    let successCount = 0;
+
+    for (let payload of queue) {
+        try {
+            await saveDrinks(url, payload);
+            successCount++;
+        } catch (e) {
+            failedQueue.push(payload); // Pokud to spadne, necháme na další pokus
+        }
+    }
+
+    localStorage.setItem("offlineQueue", JSON.stringify(failedQueue));
+    
+    if (successCount > 0) {
+        showNotification(`Úspěšně synchronizováno ${successCount} záznamů!`, "success");
+    }
+}
+
+// Posluchače na změnu stavu sítě
+window.addEventListener('online', syncOfflineQueue);
+window.addEventListener('offline', () => showNotification("Ztratili jste připojení k internetu.", "error"));
+
+
+// --- PŮVODNÍ API FUNKCE ---
 async function getPeopleList(apiUrl) {
     const res = await fetch(`${apiUrl}?cmd=getPeopleList`, { 
-        method: 'GET',
-        credentials: 'include',
-        headers: { 'Authorization': AUTH_HEADER }
+        method: 'GET', credentials: 'include', headers: { 'Authorization': AUTH_HEADER }
     });
     if (!res.ok) throw new Error(`getPeopleList HTTP ${res.status}`);
     return await res.json();
@@ -20,9 +110,7 @@ async function getPeopleList(apiUrl) {
 
 async function getTypesList(apiUrl) {
     const res = await fetch(`${apiUrl}?cmd=getTypesList`, { 
-        method: 'GET',
-        credentials: 'include',
-        headers: { 'Authorization': AUTH_HEADER }
+        method: 'GET', credentials: 'include', headers: { 'Authorization': AUTH_HEADER }
     });
     if (!res.ok) throw new Error(`getTypesList HTTP ${res.status}`);
     return await res.json();
@@ -31,10 +119,7 @@ async function getTypesList(apiUrl) {
 async function saveDrinks(apiUrl, data) {
     const res = await fetch(`${apiUrl}?cmd=saveDrinks`, {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "Authorization": AUTH_HEADER
-        },
+        headers: { "Content-Type": "application/json", "Authorization": AUTH_HEADER },
         body: JSON.stringify(data),
         credentials: 'include'
     });
@@ -42,20 +127,17 @@ async function saveDrinks(apiUrl, data) {
     return await res.json();
 }
 
+// --- RENDER FUNKCE ---
 function renderPeople(select, people) {
     let blank = document.createElement("option");
-    blank.disabled = true;
-    blank.selected = true;
-    blank.textContent = "Vyber uživatele";
+    blank.disabled = true; blank.selected = true; blank.textContent = "Vyber uživatele";
     select.append(blank);
 
     Object.values(people).forEach(p => {
         let option = document.createElement("option");
-        option.value = p.ID;
-        option.textContent = p.name;
+        option.value = p.ID; option.textContent = p.name;
         select.append(option);
     });
-
     loadSavedUser(select);
 }
 
@@ -68,27 +150,17 @@ function renderTypes(container, types) {
         label.textContent = t.typ;
 
         let minus = document.createElement("button");
-        minus.type = "button";
-        minus.textContent = "-";
+        minus.type = "button"; minus.textContent = "-";
 
         let input = document.createElement("input");
-        input.type = "number";
-        input.min = "0";
-        input.max = "10";
-        input.value = "0";
+        input.type = "number"; input.min = "0"; input.max = "10"; input.value = "0";
         input.dataset.type = t.typ;
 
         let plus = document.createElement("button");
-        plus.type = "button";
-        plus.textContent = "+";
+        plus.type = "button"; plus.textContent = "+";
 
-        minus.addEventListener("click", () => {
-            if (input.valueAsNumber > 0) input.valueAsNumber--;
-        });
-
-        plus.addEventListener("click", () => {
-            if (input.valueAsNumber < Number(input.max)) input.valueAsNumber++;
-        });
+        minus.addEventListener("click", () => { if (input.valueAsNumber > 0) input.valueAsNumber--; });
+        plus.addEventListener("click", () => { if (input.valueAsNumber < Number(input.max)) input.valueAsNumber++; });
 
         wrapper.append(label, minus, input, plus);
         container.append(wrapper);
@@ -97,12 +169,11 @@ function renderTypes(container, types) {
 
 function renderSubmit(form) {
     let submit = document.createElement("button");
-    submit.type = "submit";
-    submit.id = "submitButton";
-    submit.innerHTML = "Uložit";
+    submit.type = "submit"; submit.id = "submitButton"; submit.innerHTML = "Uložit";
     form.append(submit);
 }
 
+// --- UŽIVATELSKÉ FUNKCE ---
 function saveUser(userId) {
     localStorage.setItem("lastUser", userId);
     sessionStorage.setItem("lastUser", userId);
@@ -110,14 +181,8 @@ function saveUser(userId) {
 }
 
 function loadSavedUser(select) {
-    let userId =
-        localStorage.getItem("lastUser") ||
-        sessionStorage.getItem("lastUser") ||
-        getCookie("lastUser");
-
-    if (userId) {
-        select.value = userId;
-    }
+    let userId = localStorage.getItem("lastUser") || sessionStorage.getItem("lastUser") || getCookie("lastUser");
+    if (userId) select.value = userId;
 }
 
 function getCookie(name) {
@@ -126,56 +191,90 @@ function getCookie(name) {
     if (parts.length === 2) return parts.pop().split(";").shift();
 }
 
+// --- INICIALIZACE APLIKACE ---
 document.addEventListener('DOMContentLoaded', async () => {
     const form = document.getElementById("myForm");
-
     const userSelect = document.createElement("select");
     userSelect.id = "userSelect";
-    document.querySelector(".form-header").append(userSelect);
+    
+    const formHeader = document.querySelector(".form-header");
+    if(formHeader) formHeader.append(userSelect);
+    else form.append(userSelect); // Fallback pokud .form-header neexistuje
 
     const drinksContainer = document.createElement("div");
     drinksContainer.classList.add("drinks-container");
     form.append(drinksContainer);
 
-    const people = await getPeopleList(url);
-    renderPeople(userSelect, people);
+    try {
+        // Zkusíme stáhnout čerstvá data
+        const people = await getPeopleList(url);
+        renderPeople(userSelect, people);
 
-    const types = await getTypesList(url);
-    renderTypes(drinksContainer, types);
+        const types = await getTypesList(url);
+        renderTypes(drinksContainer, types);
+        
+        // Zkusíme synchronizovat, pokud něco visí z minula
+        syncOfflineQueue();
+    } catch (e) {
+        showNotification("Nelze načíst data, zkontrolujte připojení.", "error");
+    }
 
     renderSubmit(form);
+
+    // Tlačítko pro zobrazení denní statistiky (Bonus)
+    const statsBtn = document.createElement("button");
+    statsBtn.type = "button";
+    statsBtn.textContent = "📊 Moje dnešní spotřeba";
+    statsBtn.style.marginTop = "10px";
+    statsBtn.addEventListener("click", showDailySummary);
+    form.append(statsBtn);
 
     form.addEventListener("submit", async (e) => {
         e.preventDefault();
 
         const selectedUser = userSelect.value;
-        if (!selectedUser) return alert("Vyberte uživatele!");
+        if (!selectedUser || selectedUser === "Vyber uživatele") return alert("Vyberte uživatele!");
 
         const drinks = [];
         const inputs = form.querySelectorAll("input[type='number']");
+        let totalDrank = 0;
 
         inputs.forEach(input => {
-            drinks.push({
-                type: input.dataset.type,
-                value: parseInt(input.value) || 0
-            });
+            let val = parseInt(input.value) || 0;
+            if (val > 0) {
+                drinks.push({ type: input.dataset.type, value: val });
+                totalDrank += val;
+            }
         });
 
-        const payload = {
-            user: selectedUser,
-            drinks: drinks
-        };
+        if (totalDrank === 0) return alert("Musíte přidat alespoň jeden nápoj!");
 
+        const payload = { user: selectedUser, drinks: drinks };
         const submitButton = document.getElementById("submitButton");
+        
+        submitButton.innerHTML = "Ukládám...";
 
         try {
-            await saveDrinks(url, payload);
-            submitButton.innerHTML = "Uloženo!";
-            saveUser(selectedUser);
-            inputs.forEach(i => i.value = 0);
-            setTimeout(() => { submitButton.innerHTML = "Uložit"; }, 2500);
+            // Kontrola: Jsme online a API běží?
+            if (navigator.onLine) {
+                await saveDrinks(url, payload);
+                submitButton.innerHTML = "Uloženo!";
+                showNotification("Káva úspěšně zaznamenána!", "success");
+            } else {
+                // Vyvolá výjimku a skočí do catch
+                throw new Error("Offline");
+            }
         } catch (err) {
-            alert(err);
+            saveToOfflineQueue(payload);
+            submitButton.innerHTML = "Uloženo offline";
         }
+
+        // Společné akce ať už jsme byli online nebo offline
+        saveUser(selectedUser);
+        updateDailySummary(drinks);
+        
+        // Reset formuláře
+        inputs.forEach(i => i.value = 0);
+        setTimeout(() => { submitButton.innerHTML = "Uložit"; }, 2500);
     });
 });
