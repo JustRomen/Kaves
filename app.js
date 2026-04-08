@@ -28,16 +28,18 @@ function showNotification(message, type = "info") {
     }, 4000);
 }
 
-// --- DENNÍ PŘEHLED (BONUS) ---
+// --- DENNÍ PŘEHLED ---
 function updateDailySummary(drinks) {
-    const today = new Date().toISOString().split('T')[0]; // Např. "2026-04-08"
+    // Získáme dnešní datum ve formátu YYYY-MM-DD
+    const today = new Date().toISOString().split('T')[0]; 
     let summary = JSON.parse(localStorage.getItem("dailySummary") || "{}");
 
-    // Pokud je nový den, vyresetujeme přehled
+    // Pokud je nový den (nebo data ještě neexistují), vyresetujeme přehled
     if (summary.date !== today) {
         summary = { date: today, drinks: {} };
     }
 
+    // Přičteme nově vypité nápoje k dnešnímu dni
     drinks.forEach(d => {
         if (d.value > 0) {
             summary.drinks[d.type] = (summary.drinks[d.type] || 0) + d.value;
@@ -51,6 +53,7 @@ function showDailySummary() {
     const today = new Date().toISOString().split('T')[0];
     const summary = JSON.parse(localStorage.getItem("dailySummary") || "{}");
 
+    // Zobrazíme info pouze pokud máme data ze dneška a něco se vypilo
     if (summary.date === today && Object.keys(summary.drinks).length > 0) {
         let msg = "Dnes jsi vypil(a): ";
         let items = Object.entries(summary.drinks).map(([type, count]) => `${count}x ${type}`);
@@ -60,7 +63,7 @@ function showDailySummary() {
     }
 }
 
-// --- OFFLINE FRONT A SYNCHRONIZACE ---
+// --- OFFLINE FRONTA A SYNCHRONIZACE ---
 function saveToOfflineQueue(payload) {
     const queue = JSON.parse(localStorage.getItem("offlineQueue") || "[]");
     queue.push(payload);
@@ -94,12 +97,11 @@ async function syncOfflineQueue() {
     }
 }
 
-// Posluchače na změnu stavu sítě
 window.addEventListener('online', syncOfflineQueue);
 window.addEventListener('offline', () => showNotification("Ztratili jste připojení k internetu.", "error"));
 
 
-// --- PŮVODNÍ API FUNKCE ---
+// --- API FUNKCE ---
 async function getPeopleList(apiUrl) {
     const res = await fetch(`${apiUrl}?cmd=getPeopleList`, { 
         method: 'GET', credentials: 'include', headers: { 'Authorization': AUTH_HEADER }
@@ -199,21 +201,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     const formHeader = document.querySelector(".form-header");
     if(formHeader) formHeader.append(userSelect);
-    else form.append(userSelect); // Fallback pokud .form-header neexistuje
+    else form.append(userSelect); 
 
     const drinksContainer = document.createElement("div");
     drinksContainer.classList.add("drinks-container");
     form.append(drinksContainer);
 
     try {
-        // Zkusíme stáhnout čerstvá data
         const people = await getPeopleList(url);
         renderPeople(userSelect, people);
 
         const types = await getTypesList(url);
         renderTypes(drinksContainer, types);
         
-        // Zkusíme synchronizovat, pokud něco visí z minula
         syncOfflineQueue();
     } catch (e) {
         showNotification("Nelze načíst data, zkontrolujte připojení.", "error");
@@ -221,7 +221,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     renderSubmit(form);
 
-    // Tlačítko pro zobrazení denní statistiky (Bonus)
+    // Tlačítko pro manuální zobrazení denní statistiky
     const statsBtn = document.createElement("button");
     statsBtn.type = "button";
     statsBtn.textContent = "📊 Moje dnešní spotřeba";
@@ -229,6 +229,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     statsBtn.addEventListener("click", showDailySummary);
     form.append(statsBtn);
 
+    // --- ZPRACOVÁNÍ FORMULÁŘE ---
     form.addEventListener("submit", async (e) => {
         e.preventDefault();
 
@@ -255,13 +256,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         submitButton.innerHTML = "Ukládám...";
 
         try {
-            // Kontrola: Jsme online a API běží?
             if (navigator.onLine) {
                 await saveDrinks(url, payload);
                 submitButton.innerHTML = "Uloženo!";
                 showNotification("Káva úspěšně zaznamenána!", "success");
             } else {
-                // Vyvolá výjimku a skočí do catch
                 throw new Error("Offline");
             }
         } catch (err) {
@@ -269,11 +268,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             submitButton.innerHTML = "Uloženo offline";
         }
 
-        // Společné akce ať už jsme byli online nebo offline
+        // --- AKTUALIZACE A ZOBRAZENÍ DAT ---
         saveUser(selectedUser);
+        
+        // 1. Uložíme vypité kafe do dnešního přehledu
         updateDailySummary(drinks);
         
-        // Reset formuláře
+        // 2. Hned poté ho zobrazíme uživateli na obrazovce
+        showDailySummary();
+        
+        // Reset formuláře pro další objednávku
         inputs.forEach(i => i.value = 0);
         setTimeout(() => { submitButton.innerHTML = "Uložit"; }, 2500);
     });
