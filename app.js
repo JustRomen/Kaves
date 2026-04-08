@@ -4,16 +4,83 @@ const url = "https://crm.skch.cz/ajax0/procedure2.php";
 
 const AUTH_HEADER = make_base_auth(username, password);
 const QUEUE_KEY = "offline_drinks_queue";
+const CACHE_TYPES_KEY = "cached_drink_types";
 
 function make_base_auth(user, password) {
     return "Basic " + btoa(user + ":" + password);
 }
 
+// ==========================================
+// 1. NOTIFIKAČNÍ SYSTÉM
+// ==========================================
+function showNotification(message, type = "info") {
+    let container = document.getElementById("notification-container");
+    if (!container) {
+        container = document.createElement("div");
+        container.id = "notification-container";
+        // Jednoduché stylování přímo v JS, pro oddělení doporučuji přesunout do CSS
+        container.style.cssText = "position: fixed; top: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px;";
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement("div");
+    toast.textContent = message;
+    
+    // Barva podle typu notifikace
+    const bgColor = type === "success" ? "#4caf50" : type === "error" ? "#f44336" : "#2196f3";
+    toast.style.cssText = `background-color: ${bgColor}; color: white; padding: 12px 20px; border-radius: 5px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); font-family: sans-serif; transition: opacity 0.5s ease; opacity: 1;`;
+
+    container.appendChild(toast);
+
+    // Zmizí po 4 sekundách
+    setTimeout(() => {
+        toast.style.opacity = "0";
+        setTimeout(() => toast.remove(), 500);
+    }, 4000);
+}
+
+// ==========================================
+// 2. CHECKER API A AKTUALIZACÍ
+// ==========================================
+async function checkApiAndUpdates() {
+    if (!navigator.onLine) return; // Není internet, nezkoušíme to
+
+    try {
+        // Kontrola, zda API vůbec odpovídá a stažení čerstvých dat
+        const newTypes = await getTypesList(url);
+        const storedTypes = localStorage.getItem(CACHE_TYPES_KEY);
+
+        // Porovnáme nová data s těmi, co už máme v prohlížeči uložená
+        if (storedTypes !== JSON.stringify(newTypes)) {
+            localStorage.setItem(CACHE_TYPES_KEY, JSON.stringify(newTypes));
+            
+            // Pokud to není první načtení (kdy bylo localStorage prázdné), upozorníme a překreslíme
+            if (storedTypes !== null) {
+                showNotification("Nabídka kávy byla aktualizována z API!", "success");
+                
+                // Překreslíme nabídku drinků
+                const drinksContainer = document.querySelector(".drinks-container");
+                if (drinksContainer) {
+                    drinksContainer.innerHTML = ""; // Vyčistíme staré
+                    renderTypes(drinksContainer, newTypes); // Vykreslíme nové
+                }
+            }
+        }
+    } catch (err) {
+        console.error("API check selhal:", err);
+        showNotification("Varování: API je momentálně nedostupné.", "error");
+    }
+}
+
+
+// ==========================================
+// 3. OFFLINE FRONTA A SYNCHRONIZACE
+// ==========================================
 function addToOfflineQueue(payload) {
     const queue = JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]");
     queue.push(payload);
     localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
-    console.log("Data uložena do offline fronty.");
+    showNotification("Jste offline. Uloženo do fronty.", "info");
 }
 
 async function syncOfflineData() {
@@ -22,24 +89,40 @@ async function syncOfflineData() {
     const queue = JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]");
     if (queue.length === 0) return;
 
-    console.log(`Synchronizace: nalezeno ${queue.length} položek k odeslání...`);
+    showNotification(`Synchronizuji ${queue.length} offline záznamů...`, "info");
     const remainingQueue = [];
+    let successCount = 0;
 
     for (const payload of queue) {
         try {
             await saveDrinks(url, payload);
-            console.log("Položka úspěšně synchronizována.");
+            successCount++;
         } catch (err) {
-            console.error("Synchronizace položky selhala, zůstává ve frontě:", err);
             remainingQueue.push(payload);
         }
     }
 
     localStorage.setItem(QUEUE_KEY, JSON.stringify(remainingQueue));
+    if (successCount > 0) {
+        showNotification(`${successCount} záznamů úspěšně odesláno na server!`, "success");
+    }
 }
 
-window.addEventListener('online', syncOfflineData);
+// Zareaguje hned, jakmile počítač/mobil chytí signál
+window.addEventListener('online', () => {
+    showNotification("Připojení obnoveno!", "success");
+    syncOfflineData();
+    checkApiAndUpdates();
+});
 
+window.addEventListener('offline', () => {
+    showNotification("Ztratili jste připojení k internetu.", "error");
+});
+
+
+// ==========================================
+// 4. API FUNKCE
+// ==========================================
 async function getPeopleList(apiUrl) {
     const res = await fetch(`${apiUrl}?cmd=getPeopleList`, { 
         method: 'GET',
@@ -71,6 +154,9 @@ async function saveDrinks(apiUrl, data) {
     return await res.json();
 }
 
+// ==========================================
+// 5. RENDER FUNKCE
+// ==========================================
 function renderPeople(select, people) {
     let blank = document.createElement("option");
     blank.disabled = true;
@@ -139,14 +225,23 @@ function loadSavedUser(select) {
     if (userId) select.value = userId;
 }
 
-
+// ==========================================
+// 6. INICIALIZACE APLIKACE
+// ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
     syncOfflineData();
+    checkApiAndUpdates(); // První kontrola API při startu
+    
+    // Spustit kontrolu dostupnosti a aktualizací každou minutu (60 000 ms)
+    setInterval(checkApiAndUpdates, 60000); 
 
     const form = document.getElementById("myForm");
     const userSelect = document.createElement("select");
     userSelect.id = "userSelect";
-    document.querySelector(".form-header").append(userSelect);
+    
+    const header = document.querySelector(".form-header");
+    if(header) header.append(userSelect);
+    else form.append(userSelect);
 
     const drinksContainer = document.createElement("div");
     drinksContainer.classList.add("drinks-container");
@@ -155,10 +250,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         const people = await getPeopleList(url);
         renderPeople(userSelect, people);
+        
         const types = await getTypesList(url);
+        localStorage.setItem(CACHE_TYPES_KEY, JSON.stringify(types)); // Prvotní uložení pro porovnávání
         renderTypes(drinksContainer, types);
     } catch (e) {
-        console.error("Nepodařilo se načíst data z API.");
+        showNotification("Nepodařilo se načíst počáteční data z API.", "error");
     }
 
     renderSubmit(form);
@@ -194,6 +291,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             await saveDrinks(url, payload);
             submitButton.innerHTML = "Uloženo!";
+            showNotification("Káva byla úspěšně zaznamenána na server.", "success");
             saveUser(selectedUser);
             inputs.forEach(i => i.value = 0);
         } catch (err) {
