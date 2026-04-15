@@ -110,9 +110,7 @@ window.addEventListener('offline', () => {
 });
 
 
-// ==========================================
-// 4. API FUNKCE
-// ==========================================
+
 async function getPeopleList(apiUrl) {
     const res = await fetch(`${apiUrl}?cmd=getPeopleList`, { 
         method: 'GET',
@@ -144,9 +142,6 @@ async function saveDrinks(apiUrl, data) {
     return await res.json();
 }
 
-// ==========================================
-// 5. RENDER FUNKCE
-// ==========================================
 function renderPeople(select, people) {
     let blank = document.createElement("option");
     blank.disabled = true;
@@ -215,9 +210,7 @@ function loadSavedUser(select) {
     if (userId) select.value = userId;
 }
 
-// ==========================================
-// 6. INICIALIZACE APLIKACE
-// ==========================================
+
 document.addEventListener('DOMContentLoaded', async () => {
     syncOfflineData();
     checkApiAndUpdates(); // První kontrola API při startu
