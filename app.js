@@ -10,9 +10,6 @@ function make_base_auth(user, password) {
     return "Basic " + btoa(user + ":" + password);
 }
 
-// ==========================================
-// 1. NOTIFIKAČNÍ SYSTÉM
-// ==========================================
 function showNotification(message, type = "info") {
     let container = document.getElementById("notification-container");
     if (!container) {
@@ -39,26 +36,21 @@ function showNotification(message, type = "info") {
     }, 4000);
 }
 
-// ==========================================
-// 2. CHECKER API A AKTUALIZACÍ
-// ==========================================
+
 async function checkApiAndUpdates() {
-    if (!navigator.onLine) return; // Není internet, nezkoušíme to
+    if (!navigator.onLine) return; 
 
     try {
-        // Kontrola, zda API vůbec odpovídá a stažení čerstvých dat
         const newTypes = await getTypesList(url);
         const storedTypes = localStorage.getItem(CACHE_TYPES_KEY);
 
-        // Porovnáme nová data s těmi, co už máme v prohlížeči uložená
         if (storedTypes !== JSON.stringify(newTypes)) {
             localStorage.setItem(CACHE_TYPES_KEY, JSON.stringify(newTypes));
             
-            // Pokud to není první načtení (kdy bylo localStorage prázdné), upozorníme a překreslíme
             if (storedTypes !== null) {
                 showNotification("Nabídka kávy byla aktualizována z API!", "success");
                 
-                // Překreslíme nabídku drinků
+                
                 const drinksContainer = document.querySelector(".drinks-container");
                 if (drinksContainer) {
                     drinksContainer.innerHTML = ""; // Vyčistíme staré
@@ -73,9 +65,7 @@ async function checkApiAndUpdates() {
 }
 
 
-// ==========================================
-// 3. OFFLINE FRONTA A SYNCHRONIZACE
-// ==========================================
+
 function addToOfflineQueue(payload) {
     const queue = JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]");
     queue.push(payload);
