@@ -23,13 +23,11 @@ function showNotification(message, type = "info") {
     const toast = document.createElement("div");
     toast.textContent = message;
     
-    // Barva podle typu notifikace
     const bgColor = type === "success" ? "#4caf50" : type === "error" ? "#f44336" : "#2196f3";
     toast.style.cssText = `background-color: ${bgColor}; color: white; padding: 12px 20px; border-radius: 5px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); font-family: sans-serif; transition: opacity 0.5s ease; opacity: 1;`;
 
     container.appendChild(toast);
 
-    // Zmizí po 4 sekundách
     setTimeout(() => {
         toast.style.opacity = "0";
         setTimeout(() => toast.remove(), 500);
@@ -213,9 +211,8 @@ function loadSavedUser(select) {
 
 document.addEventListener('DOMContentLoaded', async () => {
     syncOfflineData();
-    checkApiAndUpdates(); // První kontrola API při startu
+    checkApiAndUpdates(); 
     
-    // Spustit kontrolu dostupnosti a aktualizací každou minutu (60 000 ms)
     setInterval(checkApiAndUpdates, 60000); 
 
     const form = document.getElementById("myForm");
